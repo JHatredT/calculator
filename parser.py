@@ -7,6 +7,7 @@ class Parser:
         self._ptr = 0
 
     def parse(self, expr: str):
+        self._ptr = 0
         output = []
         stack = []
 
@@ -25,7 +26,6 @@ class Parser:
         if not output or len(output) > 1:
             raise ValueError
 
-        self._ptr = 0
         return output[0]
 
     def parse_num(self, expr: str):
