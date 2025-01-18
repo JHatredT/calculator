@@ -3,6 +3,11 @@ from unittest import (
     TestCase,
     main
 )
+from math import (
+    sin,
+    cos,
+    tan
+)
 
 
 class TestParseFunction(TestCase):
@@ -20,7 +25,26 @@ class TestParseFunction(TestCase):
         self.assertEqual(parser.parse('2+8÷(2×4)−2'), 1)
         self.assertEqual(parser.parse('3+(5−1)÷2'), 5)
         self.assertEqual(parser.parse('7+(2÷5)×(4−6)'), eval('7+(2/5)*(4-6)'))
-        self.assertEqual(parser.parse('((3+2)×(9−8)+1)+5÷2'), eval('((3+2)*(9-8)+1)+5/2'))
+        self.assertEqual(
+            parser.parse('((3+2)×(9−8)+1)+5÷2'),
+            eval('((3+2)*(9-8)+1)+5/2')
+        )
+        self.assertEqual(
+            parser.parse('sin(1)+cos(1)×tan(1)÷sin(2)'),
+            eval('sin(1)+cos(1)*tan(1)/sin(2)')
+        )
+        self.assertEqual(
+            parser.parse('cos(1)×sin(1)−tan(1)÷cos(2)×sin(3)'),
+            eval('cos(1)*sin(1)-tan(1)/cos(2)*sin(3)')
+        )
+        self.assertEqual(
+            parser.parse('sin(1)+cos(2)÷tan(1)×sin(3)−cos(4)×sin(5)'),
+            eval('sin(1)+cos(2)/tan(1)*sin(3)-cos(4)*sin(5)')
+        )
+        self.assertEqual(
+            parser.parse('tan(1)×sin(1)÷cos(2)−sin(3)×cos(1)+tan(4)÷sin(5)'),
+            eval('tan(1)*sin(1)/cos(2)-sin(3)*cos(1)+tan(4)/sin(5)')
+        )
 
     def test_parse_invalid(self) -> None:
         parser = Parser()
