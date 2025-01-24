@@ -1,4 +1,4 @@
-from parser import Parser
+from core.parser import Parser
 from unittest import (
     TestCase,
     main

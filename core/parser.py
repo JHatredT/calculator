@@ -1,6 +1,6 @@
-from func import func_tbl
+from core.func import func_tbl
 from typing import List, Callable
-from const import const_tbl
+from core.const import const_tbl
 
 
 class Parser:
