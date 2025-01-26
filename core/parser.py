@@ -1,103 +1,125 @@
-from core.func import func_tbl
-from typing import List, Callable
-from core.const import const_tbl
+from core.const import const_table
+from core.context import ParserContext
+from core.func import Function, func_table
+from core.op import Operator, unary_op_table, binary_op_table
 
 
 class Parser:
     def parse(self, expr: str) -> float:
-        index = 0
-        output = []
-        op_stack = []
+        context = ParserContext(0, 'unary', [], [])
 
-        while index < len(expr):
-            if self._is_digit_or_dot(expr, index) or expr[index] in const_tbl:
-                index = self._parse_num(expr, index, output)
-            elif expr[index] == '(':
-                op_stack.append('(')
-                index += 1
-            elif expr[index] == ')':
-                index = self._parse_paren(expr, index, output, op_stack)
-            else:
-                index = self._parse_func(expr, index, output, op_stack)
+        while context.ptr < len(expr):
+            char = expr[context.ptr]
 
-        while op_stack and op_stack[-1] in func_tbl:
-            self._apply_func(output, op_stack)
+            if char.isdigit() or char == '.':
+                self._parse_num(expr, context)
+            elif char in const_table:
+                context.output.append(const_table[char])
+                context.state = 'binary'
+            elif char in unary_op_table | binary_op_table:
+                self._parse_op(char, context)
+            elif char == '(':
+                context.stack.append(char)
+                context.state = 'unary'
+                context.ptr += 1
+            elif char == ')':
+                self._consume_stack(context)
+                context.state = 'binary'
+                context.ptr += 1
+            elif char.isalpha():
+                self._parse_func(expr, context)
 
-        if op_stack or not output or len(output) > 1:
+        self._consume_stack(context)
+
+        if len(context.output) != 1 or context.stack:
             raise ValueError
-
-        return output[0]
-
-    def _parse_num(self, expr: str, ptr: int, out: List[float]) -> int:
-        if expr[ptr] in const_tbl:
-            out.append(const_tbl[expr[ptr]])
-            ptr += 1
-            return ptr
-
-        base = ptr
-
-        while ptr < len(expr) and self._is_digit_or_dot(expr, ptr):
-            ptr += 1
-
-        if expr[base:ptr].count('.') > 1:
-            raise ValueError
-
-        out.append(float(expr[base:ptr]))
-        return ptr
-
-    def _parse_func(
-        self,
-        expr: str,
-        ptr: int,
-        out: List[float],
-        stack: List[str]
-    ):
-        if stack and stack[-1] not in func_tbl:
-            stack.append(expr[ptr])
-            ptr += 1
-            return ptr
-
-        base = ptr
-
-        while ptr < len(expr) and not self._is_digit_or_dot(expr, ptr):
-            ptr += 1
-
-            if expr[base:ptr] in func_tbl:
-                break
-
-        while stack and stack[-1] in func_tbl:
-            if not func_tbl[expr[base:ptr]].prio <= func_tbl[stack[-1]].prio:
-                break
+        
+        return context.output[0]
                 
-            self._apply_func(out, stack)
-
-        stack.append(expr[base:ptr])
-        return ptr
-
-    def _parse_paren(
-        self,
-        expr: str,
-        ptr: int,
-        out: List[float],
-        stack: List[str]
-    ):
-        while stack and stack[-1] != '(':
-            self._apply_func(out, stack)
-
-        if not stack:
+    def _parse_num(self, expr: str, context: ParserContext):
+        if context.state != 'unary':
             raise ValueError
+        
+        base = context.ptr
 
-        stack.pop()
-        ptr += 1
-        return ptr
+        while context.ptr < len(expr):
+            char = expr[context.ptr]
 
-    def _apply_func(self, out: List[float], stack: List[str]):
-        if func_tbl[stack[-1]].ari == 2 and len(out) >= 2:
-            out.append(func_tbl[stack.pop()](out.pop(-2), out.pop()))
-        elif func_tbl[stack[-1]].ari == 1 and out:
-            out.append(func_tbl[stack.pop()](out.pop()))
+            if not (char.isdigit() or char == '.'):
+                break
+
+            context.ptr += 1
+
+        if expr[base:context.ptr].count('.') > 1:
+            raise ValueError
+        
+        context.output.append(float(expr[base:context.ptr]))
+        context.state = 'binary'
+        
+    def _parse_op(self, char: str, context: ParserContext):
+        if char in unary_op_table and context.state == 'unary':
+            op = unary_op_table[char]
+            context.state = 'unary'
+        elif char in binary_op_table and context.state == 'binary':
+            op = binary_op_table[char]
+            context.state = 'unary'
         else:
             raise ValueError
+        
+        while context.stack:
+            top = context.stack[-1]
 
-    def _is_digit_or_dot(self, expr: str, ptr: int):
-        return expr[ptr].isdigit() or expr[ptr] == '.'
+            if type(top) == Function:
+                pass
+            elif type(top) != Operator or not (
+                (op.prec <= top.prec and op.assoc == 'left') or
+                (op.prec < top.prec and op.assoc == 'right')
+            ):
+                break
+            
+            self._apply_func(context)
+
+        context.stack.append(op)
+        context.ptr += 1
+
+    def _parse_func(self, expr: str, context: ParserContext):
+        if context.state != 'unary':
+            raise ValueError
+        
+        base = context.ptr
+
+        while context.ptr < len(expr):
+            char = expr[context.ptr]
+
+            if not char.isalpha():
+                break
+
+            context.ptr += 1
+
+        if expr[base:context.ptr] not in func_table:
+            raise ValueError
+        
+        context.stack.append(func_table[expr[base:context.ptr]])
+        context.state = 'unary'
+
+    def _apply_func(self, context: ParserContext):
+        func = context.stack.pop()
+        values = []
+
+        if len(context.output) < func.arity:
+            raise ValueError
+        
+        for _ in range(func.arity):
+            values.append(context.output.pop())
+
+        context.output.append(func(values[::-1]))
+
+    def _consume_stack(self, context: ParserContext):
+        while context.stack:
+            top = context.stack[-1]
+
+            if top == '(':
+                context.stack.pop()
+                break
+
+            self._apply_func(context)

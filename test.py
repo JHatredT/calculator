@@ -1,16 +1,9 @@
 from core.parser import Parser
-from unittest import (
-    TestCase,
-    main
-)
-from math import (
-    sin,
-    cos,
-    tan
-)
+from unittest import TestCase, main
+from math import sin, cos, tan
 
 
-class TestParseFunction(TestCase):
+class TestParser(TestCase):
     def test_parse_valid(self) -> None:
         parser = Parser()
 
@@ -49,18 +42,12 @@ class TestParseFunction(TestCase):
     def test_parse_invalid(self) -> None:
         parser = Parser()
         
-        self.assertRaises(ValueError, parser.parse, '3+−5×2')
         self.assertRaises(ValueError, parser.parse, '6×÷4−2')
         self.assertRaises(ValueError, parser.parse, '−7+8÷')
-        self.assertRaises(ValueError, parser.parse, '4×+3−1')
-        self.assertRaises(ValueError, parser.parse, '8÷2×−3+4')
         self.assertRaises(ValueError, parser.parse, '5+×6−2÷')
         self.assertRaises(ValueError, parser.parse, '2×−5÷3+')
-        self.assertRaises(ValueError, parser.parse, '+7−4×8÷2')
-        self.assertRaises(ValueError, parser.parse, '(+2×7)-8÷2')
         self.assertRaises(ValueError, parser.parse, ')9-3(−2×3÷1')
         self.assertRaises(ValueError, parser.parse, '3−5×((7÷6)+1')
-        self.assertRaises(ValueError, parser.parse, '+7−4×8÷2')
 
 
 if __name__ == '__main__':
