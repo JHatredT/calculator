@@ -1,7 +1,9 @@
 from tkinter import Tk
 from gui.display import Display
 from gui.keypad import Keypad
+from core.tokenizer import Tokenizer
 from core.parser import Parser
+from core.evaluator import Evaluator
 
 
 def main() -> None:
@@ -14,10 +16,15 @@ def main() -> None:
 
     display = Display(root)
     keypad = Keypad(root)
+    tokenizer = Tokenizer()
     parser = Parser()
+    evaluator = Evaluator()
 
-    def get_result(display: Display, parser: Parser):
-        result = parser.parse(display.get_string())
+    def calc():
+        seq = tokenizer.tokenize(display.get_string())
+        tree = parser.parse(seq)
+        result = evaluator.evaluate(tree)
+        
         return str(result).rstrip("0").rstrip(".").replace('-', '−')
 
     key_map = {
@@ -43,7 +50,7 @@ def main() -> None:
         "÷": lambda: display.insert_char("÷"),
         "(": lambda: display.insert_char("("),
         ")": lambda: display.insert_char(")"),
-        "=": lambda: display.set_string(get_result(display, parser)),
+        "=": lambda: display.set_string(calc()),
         "OFF": quit,
         "sin": lambda: display.insert_char("sin"),
         "cos": lambda: display.insert_char("cos"),

@@ -1,125 +1,96 @@
-from core.const import const_table
-from core.context import ParserContext
-from core.func import Function, func_table
+from core.tokenizer import TokenType, Token, TokenSequence
 from core.op import Operator, unary_op_table, binary_op_table
+from core.func import Function, func_table
+from core.dlm import dlm_table, Delimiter
+from core.const import const_table
+
+
+class ParseTree:
+    def __init__(self):
+        self.state = 'u'
+        self.nodes = []
+
+    def __repr__(self):
+        return str(self.nodes)
 
 
 class Parser:
-    def parse(self, expr: str) -> float:
-        context = ParserContext(0, 'unary', [], [])
+    def parse(self, seq: TokenSequence) -> ParseTree:
+        stack = []
+        tree = ParseTree()
 
-        while context.ptr < len(expr):
-            char = expr[context.ptr]
+        for token in seq.tokens:
+            if token.type == TokenType.NUMBER:
+                self._parse_num(token, tree)
+            elif token.type == TokenType.OPERATOR:
+                self._parse_op(token, tree, stack)
+            elif token.type == TokenType.FUNCTION:
+                self._parse_func(token, tree, stack)
+            elif token.type == TokenType.DELIMITER:
+                self._parse_dlm(token, tree, stack)
+            elif token.type == TokenType.CONSTANT:
+                self._parse_const(token, tree)
 
-            if char.isdigit() or char == '.':
-                self._parse_num(expr, context)
-            elif char in const_table:
-                context.output.append(const_table[char])
-                context.state = 'binary'
-            elif char in unary_op_table | binary_op_table:
-                self._parse_op(char, context)
-            elif char == '(':
-                context.stack.append(char)
-                context.state = 'unary'
-                context.ptr += 1
-            elif char == ')':
-                self._consume_stack(context)
-                context.state = 'binary'
-                context.ptr += 1
-            elif char.isalpha():
-                self._parse_func(expr, context)
+        while stack:
+            if type(stack[-1]) == Delimiter:
+                raise ValueError(f'Delimiter not closed')
 
-        self._consume_stack(context)
+            tree.nodes.append(stack.pop())
 
-        if len(context.output) != 1 or context.stack:
-            raise ValueError
+        return tree
+
+    def _parse_num(self, token: Token, tree: ParseTree):
+        if tree.state != 'u':
+            raise ValueError('Number unexpected')
         
-        return context.output[0]
-                
-    def _parse_num(self, expr: str, context: ParserContext):
-        if context.state != 'unary':
-            raise ValueError
+        tree.nodes.append(float(token.value))
+        tree.state = 'b'
+
+    def _parse_op(self, token: Token, tree: ParseTree, stack: list[Token]):
+        if token.value in unary_op_table and tree.state == 'u':
+            op = unary_op_table[token.value]
+        elif token.value in binary_op_table and tree.state == 'b':
+            op = binary_op_table[token.value]
+            tree.state = 'u'
+        else:
+            raise ValueError('Operator unexpected')
         
-        base = context.ptr
+        while stack and (type(stack[-1]) == Function or (
+            type(stack[-1]) == Operator and (
+                (op.prec <= stack[-1].prec and op.assoc == 'left') or
+                (op.prec < stack[-1].prec and op.assoc == 'right')
+            )
+        )):
+            tree.nodes.append(stack.pop())
 
-        while context.ptr < len(expr):
-            char = expr[context.ptr]
+        stack.append(op)
 
-            if not (char.isdigit() or char == '.'):
-                break
-
-            context.ptr += 1
-
-        if expr[base:context.ptr].count('.') > 1:
-            raise ValueError
+    def _parse_func(self, token: Token, tree: ParseTree, stack: Token):
+        if tree.state != 'u':
+            raise ValueError('Function unexpected')
         
-        context.output.append(float(expr[base:context.ptr]))
-        context.state = 'binary'
-        
-    def _parse_op(self, char: str, context: ParserContext):
-        if char in unary_op_table and context.state == 'unary':
-            op = unary_op_table[char]
-            context.state = 'unary'
-        elif char in binary_op_table and context.state == 'binary':
-            op = binary_op_table[char]
-            context.state = 'unary'
+        stack.append(func_table[token.value])
+
+    def _parse_dlm(self, token: Token, tree: ParseTree, stack: Token):
+        if token.value in dlm_table and tree.state == 'u':
+            stack.append(dlm_table[token.value])
+        elif tree.state == 'b':
+            while stack and type(stack[-1]) != Delimiter:
+                tree.nodes.append(stack.pop())
+
+            if not stack or stack[-1].pair != token.value:
+                raise ValueError('Delimiter not opened')
+            
+            if stack[-1].mod:
+                tree.nodes.append(stack[-1].mod)
+
+            stack.pop()
         else:
             raise ValueError
+
+    def _parse_const(self, token: Token, tree: ParseTree):
+        if tree.state != 'u':
+            raise ValueError('Constant unexpected')
         
-        while context.stack:
-            top = context.stack[-1]
-
-            if type(top) == Function:
-                pass
-            elif type(top) != Operator or not (
-                (op.prec <= top.prec and op.assoc == 'left') or
-                (op.prec < top.prec and op.assoc == 'right')
-            ):
-                break
-            
-            self._apply_func(context)
-
-        context.stack.append(op)
-        context.ptr += 1
-
-    def _parse_func(self, expr: str, context: ParserContext):
-        if context.state != 'unary':
-            raise ValueError
-        
-        base = context.ptr
-
-        while context.ptr < len(expr):
-            char = expr[context.ptr]
-
-            if not char.isalpha():
-                break
-
-            context.ptr += 1
-
-        if expr[base:context.ptr] not in func_table:
-            raise ValueError
-        
-        context.stack.append(func_table[expr[base:context.ptr]])
-        context.state = 'unary'
-
-    def _apply_func(self, context: ParserContext):
-        func = context.stack.pop()
-        values = []
-
-        if len(context.output) < func.arity:
-            raise ValueError
-        
-        for _ in range(func.arity):
-            values.append(context.output.pop())
-
-        context.output.append(func(values[::-1]))
-
-    def _consume_stack(self, context: ParserContext):
-        while context.stack:
-            top = context.stack[-1]
-
-            if top == '(':
-                context.stack.pop()
-                break
-
-            self._apply_func(context)
+        tree.nodes.append(const_table[token.value])
+        tree.state = 'b'
