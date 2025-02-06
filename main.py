@@ -1,7 +1,9 @@
 from tkinter import Tk
 from gui.display import Display
 from gui.keypad import Keypad
+from core.tokenizer import Tokenizer
 from core.parser import Parser
+from core.evaluator import Evaluator
 
 
 def main() -> None:
@@ -14,11 +16,16 @@ def main() -> None:
 
     display = Display(root)
     keypad = Keypad(root)
+    tokenizer = Tokenizer()
     parser = Parser()
+    evaluator = Evaluator()
 
-    def get_result(display: Display, parser: Parser):
-        result = parser.parse(display.get_string())
-        return str(result).rstrip("0").rstrip(".")
+    def calc():
+        seq = tokenizer.tokenize(display.get_string())
+        tree = parser.parse(seq)
+        result = evaluator.evaluate(tree)
+        
+        return str(result).rstrip("0").rstrip(".").replace('-', '−')
 
     key_map = {
         "<": lambda: display.move_cursor(-1),
@@ -39,10 +46,12 @@ def main() -> None:
         "×": lambda: display.insert_char("×"),
         "0": lambda: display.insert_char("0"),
         ".": lambda: display.insert_char("."),
-        "=": lambda: display.set_string(get_result(display, parser)),
+        "^": lambda: display.insert_char("^"),
         "÷": lambda: display.insert_char("÷"),
         "(": lambda: display.insert_char("("),
         ")": lambda: display.insert_char(")"),
+        "=": lambda: display.set_string(calc()),
+        "OFF": quit,
         "sin": lambda: display.insert_char("sin"),
         "cos": lambda: display.insert_char("cos"),
         "tan": lambda: display.insert_char("tan"),
@@ -50,7 +59,7 @@ def main() -> None:
         "acos": lambda: display.insert_char("acos"),
         "atan": lambda: display.insert_char("atan"),
         "π": lambda: display.insert_char("π"),
-        "τ": lambda: display.insert_char("τ"),
+        "τ": lambda: display.insert_char("τ")
     }
 
     keypad.set_layout(key_map, 4, "column")
@@ -60,8 +69,6 @@ def main() -> None:
     keypad.pack(fill = "both", expand = True)
     
     root.mainloop()
-
-    return
 
 
 if __name__ == '__main__':

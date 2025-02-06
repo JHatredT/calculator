@@ -1,103 +1,96 @@
-from core.func import func_tbl
-from typing import List, Callable
-from core.const import const_tbl
+from core.tokenizer import TokenType, Token, TokenSequence
+from core.op import Operator, unary_op_table, binary_op_table
+from core.func import Function, func_table
+from core.dlm import dlm_table, Delimiter
+from core.const import const_table
+
+
+class ParseTree:
+    def __init__(self):
+        self.state = 'u'
+        self.nodes = []
+
+    def __repr__(self):
+        return str(self.nodes)
 
 
 class Parser:
-    def parse(self, expr: str) -> float:
-        index = 0
-        output = []
-        op_stack = []
+    def parse(self, seq: TokenSequence) -> ParseTree:
+        stack = []
+        tree = ParseTree()
 
-        while index < len(expr):
-            if self._is_digit_or_dot(expr, index) or expr[index] in const_tbl:
-                index = self._parse_num(expr, index, output)
-            elif expr[index] == '(':
-                op_stack.append('(')
-                index += 1
-            elif expr[index] == ')':
-                index = self._parse_paren(expr, index, output, op_stack)
-            else:
-                index = self._parse_func(expr, index, output, op_stack)
+        for token in seq.tokens:
+            if token.type == TokenType.NUMBER:
+                self._parse_num(token, tree)
+            elif token.type == TokenType.OPERATOR:
+                self._parse_op(token, tree, stack)
+            elif token.type == TokenType.FUNCTION:
+                self._parse_func(token, tree, stack)
+            elif token.type == TokenType.DELIMITER:
+                self._parse_dlm(token, tree, stack)
+            elif token.type == TokenType.CONSTANT:
+                self._parse_const(token, tree)
 
-        while op_stack and op_stack[-1] in func_tbl:
-            self._apply_func(output, op_stack)
+        while stack:
+            if type(stack[-1]) == Delimiter:
+                raise ValueError(f'Delimiter not closed')
 
-        if op_stack or not output or len(output) > 1:
-            raise ValueError
+            tree.nodes.append(stack.pop())
 
-        return output[0]
+        return tree
 
-    def _parse_num(self, expr: str, ptr: int, out: List[float]) -> int:
-        if expr[ptr] in const_tbl:
-            out.append(const_tbl[expr[ptr]])
-            ptr += 1
-            return ptr
+    def _parse_num(self, token: Token, tree: ParseTree):
+        if tree.state != 'u':
+            raise ValueError('Number unexpected')
+        
+        tree.nodes.append(float(token.value))
+        tree.state = 'b'
 
-        base = ptr
+    def _parse_op(self, token: Token, tree: ParseTree, stack: list[Token]):
+        if token.value in unary_op_table and tree.state == 'u':
+            op = unary_op_table[token.value]
+        elif token.value in binary_op_table and tree.state == 'b':
+            op = binary_op_table[token.value]
+            tree.state = 'u'
+        else:
+            raise ValueError('Operator unexpected')
+        
+        while stack and (type(stack[-1]) == Function or (
+            type(stack[-1]) == Operator and (
+                (op.prec <= stack[-1].prec and op.assoc == 'left') or
+                (op.prec < stack[-1].prec and op.assoc == 'right')
+            )
+        )):
+            tree.nodes.append(stack.pop())
 
-        while ptr < len(expr) and self._is_digit_or_dot(expr, ptr):
-            ptr += 1
+        stack.append(op)
 
-        if expr[base:ptr].count('.') > 1:
-            raise ValueError
+    def _parse_func(self, token: Token, tree: ParseTree, stack: Token):
+        if tree.state != 'u':
+            raise ValueError('Function unexpected')
+        
+        stack.append(func_table[token.value])
 
-        out.append(float(expr[base:ptr]))
-        return ptr
+    def _parse_dlm(self, token: Token, tree: ParseTree, stack: Token):
+        if token.value in dlm_table and tree.state == 'u':
+            stack.append(dlm_table[token.value])
+        elif tree.state == 'b':
+            while stack and type(stack[-1]) != Delimiter:
+                tree.nodes.append(stack.pop())
 
-    def _parse_func(
-        self,
-        expr: str,
-        ptr: int,
-        out: List[float],
-        stack: List[str]
-    ):
-        if stack and stack[-1] not in func_tbl:
-            stack.append(expr[ptr])
-            ptr += 1
-            return ptr
+            if not stack or stack[-1].pair != token.value:
+                raise ValueError('Delimiter not opened')
+            
+            if stack[-1].mod:
+                tree.nodes.append(stack[-1].mod)
 
-        base = ptr
-
-        while ptr < len(expr) and not self._is_digit_or_dot(expr, ptr):
-            ptr += 1
-
-            if expr[base:ptr] in func_tbl:
-                break
-
-        while stack and stack[-1] in func_tbl:
-            if not func_tbl[expr[base:ptr]].prio <= func_tbl[stack[-1]].prio:
-                break
-                
-            self._apply_func(out, stack)
-
-        stack.append(expr[base:ptr])
-        return ptr
-
-    def _parse_paren(
-        self,
-        expr: str,
-        ptr: int,
-        out: List[float],
-        stack: List[str]
-    ):
-        while stack and stack[-1] != '(':
-            self._apply_func(out, stack)
-
-        if not stack:
-            raise ValueError
-
-        stack.pop()
-        ptr += 1
-        return ptr
-
-    def _apply_func(self, out: List[float], stack: List[str]):
-        if func_tbl[stack[-1]].ari == 2 and len(out) >= 2:
-            out.append(func_tbl[stack.pop()](out.pop(-2), out.pop()))
-        elif func_tbl[stack[-1]].ari == 1 and out:
-            out.append(func_tbl[stack.pop()](out.pop()))
+            stack.pop()
         else:
             raise ValueError
 
-    def _is_digit_or_dot(self, expr: str, ptr: int):
-        return expr[ptr].isdigit() or expr[ptr] == '.'
+    def _parse_const(self, token: Token, tree: ParseTree):
+        if tree.state != 'u':
+            raise ValueError('Constant unexpected')
+        
+        tree.nodes.append(const_table[token.value])
+        tree.state = 'b'

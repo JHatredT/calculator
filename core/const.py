@@ -1,10 +1,7 @@
-from math import (
-    pi,
-    tau
-)
+from math import pi, tau
 
 
-const_tbl = {
+const_table = {
     'π': pi,
     'τ': tau
 }
